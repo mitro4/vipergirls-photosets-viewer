@@ -1,0 +1,84 @@
+name: tests
+
+# Linux CI (matches the production Docker image's platform): unit tests +
+# frontend build + offline backend health smoke. macOS-specific native
+# bundling stays in build-macos.yml.
+
+on:
+  push:
+    branches: [master, develop]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    name: Ubuntu — pytest + build + smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-dev.txt
+
+      - name: Run backend unit tests
+        working-directory: backend
+        run: |
+          python -m pip install -U pip
+          pip install -r requirements.txt -r requirements-dev.txt
+          pytest -q
+
+      - name: Build frontend (tsc -b && vite build)
+        run: |
+          cd frontend
+          npm ci
+          npm run build
+
+      # Same offline recipe as build-macos.yml: no credentials + no auth.json
+      # -> auto_login/restore_auth are no-ops, /api/health needs no network.
+      - name: Smoke test — backend healthy
+        working-directory: backend
+        run: |
+          mkdir -p "$RUNNER_TEMP/vdata"
+          DATA_DIR="$RUNNER_TEMP/vdata" \
+          VIPER_HOST=127.0.0.1 \
+          VIPER_PORT=8000 \
+            python -m app.launcher --no-gui > "$RUNNER_TEMP/backend.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/backend.pid"
+          ok=0
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8000/api/health >/dev/null 2>&1; then
+              echo "::notice::Health check OK after ${i}s"
+              ok=1
+              break
+            fi
+            sleep 1
+          done
+          kill "$(cat "$RUNNER_TEMP/backend.pid")" 2>/dev/null || true
+          if [ "$ok" != "1" ]; then
+            echo "::error::backend did not become healthy within 60s. Last logs:"
+            tail -n 80 "$RUNNER_TEMP/backend.log" || true
+            exit 1
+          fi
+
+      - name: Upload backend log (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-log-linux
+          path: ${{ runner.temp }}/backend.log
+          if-no-files-found: ignore

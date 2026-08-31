@@ -1,0 +1,33 @@
+#!/bin/bash
+# postinst — runs after the package files are unpacked (deb postinst / rpm %post).
+set -e
+
+# Create a dedicated system user (no login shell, no home).
+if ! id vipergirls-viewer &>/dev/null; then
+    useradd --system --no-create-home --shell /usr/sbin/nologin vipergirls-viewer 2>/dev/null \
+        || /usr/sbin/useradd --system --no-create-home --shell /usr/sbin/nologin vipergirls-viewer
+fi
+
+# Data directory (SQLite DB + image cache).
+mkdir -p /var/lib/vipergirls-viewer
+chown vipergirls-viewer:vipergirls-viewer /var/lib/vipergirls-viewer
+
+# Make the launcher executable (packaging may strip the bit).
+chmod +x /opt/vipergirls-viewer/backend/run.sh 2>/dev/null || true
+
+# Register + enable the systemd service (if systemd is available).
+# Don't auto-start — the desktop GUI spawns its own backend on :8000.
+# Users who want server-only mode can: systemctl start vipergirls-viewer
+if command -v systemctl >/dev/null 2>&1; then
+    systemctl daemon-reload
+    systemctl enable vipergirls-viewer
+fi
+
+echo ""
+echo "=== ViperGirls Viewer installed ==="
+echo "  URL:     http://localhost:8000"
+echo "  Service: systemctl status vipergirls-viewer"
+echo "  Data:    /var/lib/vipergirls-viewer"
+echo ""
+
+exit 0

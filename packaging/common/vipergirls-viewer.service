@@ -1,0 +1,17 @@
+[Unit]
+Description=ViperGirls Photo Sets Viewer
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/opt/vipergirls-viewer/backend/run.sh --no-gui
+Restart=on-failure
+RestartSec=5
+# Dedicated system user created by postinst.
+User=vipergirls-viewer
+Group=vipergirls-viewer
+Environment=DATA_DIR=/var/lib/vipergirls-viewer
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,46 @@
+# pacman install hooks for vipergirls-viewer (CachyOS / Arch).
+#
+# pacman SOURCES this file and calls the functions below — it is NOT a
+# standalone script, so no top-level `set -e` / `exit` here.
+# Mirrors packaging/common/{postinst,prerm,postrm} adapted to pacman semantics.
+
+post_install() {
+    # Dedicated system user for the optional server (systemd) mode.
+    if ! id vipergirls-viewer &>/dev/null; then
+        useradd --system --no-create-home --shell /usr/sbin/nologin vipergirls-viewer 2>/dev/null \
+            || /usr/sbin/useradd --system --no-create-home --shell /usr/sbin/nologin vipergirls-viewer 2>/dev/null || true
+    fi
+    install -d -o vipergirls-viewer -g vipergirls-viewer /var/lib/vipergirls-viewer
+    chmod +x /opt/vipergirls-viewer/backend/run.sh 2>/dev/null || true
+    # Register the bundled systemd unit. Don't auto-start — the desktop GUI
+    # spawns its own backend on :8000; server-only users can start it manually.
+    if command -v systemctl >/dev/null 2>&1; then
+        systemctl daemon-reload
+        systemctl enable vipergirls-viewer
+    fi
+    cat <<'EOF'
+
+=== ViperGirls Viewer installed ===
+  Launch from the application menu, or run the service:
+    sudo systemctl start vipergirls-viewer   (server mode, http://localhost:8000)
+  Data dir: /var/lib/vipergirls-viewer
+
+EOF
+}
+
+post_upgrade() {
+    post_install
+}
+
+pre_remove() {
+    systemctl stop vipergirls-viewer 2>/dev/null || true
+    systemctl disable vipergirls-viewer 2>/dev/null || true
+}
+
+post_remove() {
+    rm -rf /opt/vipergirls-viewer 2>/dev/null || true
+    # Drop the system-wide data dir only if empty (per-user data is preserved).
+    if [ -d /var/lib/vipergirls-viewer ] && [ -z "$(ls -A /var/lib/vipergirls-viewer 2>/dev/null)" ]; then
+        rmdir /var/lib/vipergirls-viewer 2>/dev/null || true
+    fi
+}

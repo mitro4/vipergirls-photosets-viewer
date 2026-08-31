@@ -1,0 +1,11 @@
+fastapi>=0.115,<0.117
+uvicorn[standard]>=0.34,<0.36
+httpx[http2,socks]>=0.28,<0.29
+curl_cffi>=0.7
+lxml>=5.3
+beautifulsoup4>=4.12
+aiosqlite>=0.20
+stream-zip>=0.0.83
+pydantic-settings>=2.7
+python-multipart>=0.0.20
+Pillow>=10.0

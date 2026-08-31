@@ -1,0 +1,6 @@
+#!/bin/bash
+# deb prerm — runs before the package is removed.
+set -e
+systemctl stop vipergirls-viewer || true
+systemctl disable vipergirls-viewer || true
+exit 0

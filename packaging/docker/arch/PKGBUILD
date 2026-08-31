@@ -1,0 +1,40 @@
+# PKGBUILD for vipergirls-viewer (CachyOS / Arch Linux).
+#
+# Consumed by packaging/docker/arch/Dockerfile, which stages the already-
+# assembled payload (bundled Python + Electron + frontend) at /staging/pkg.
+# It can also be run directly on a CachyOS/Arch host once that payload exists
+# — see PACKAGING.md.
+#
+# Maintainer: mitro4 <jackal.dat@yandex.ru>
+pkgname=vipergirls-viewer
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Web-based photo set viewer for the ViperGirls forum (bundles Python + Electron)"
+arch=('x86_64')
+url="https://github.com/mitro4/vipergirls-photosets-viewer"
+license=('MIT')
+# Runtime libraries required by the bundled Electron (Chromium). The bundled
+# Python is self-contained, so nothing from python-* is needed on the host.
+depends=(
+    'gtk3'
+    'nss'
+    'alsa-lib'
+    'at-spi2-core'
+    'libdrm'
+    'mesa'
+    'libnotify'
+    'xdg-utils'
+    'hicolor-icon-theme'
+)
+options=('!strip' '!emptydirs')
+install=${pkgname}.install
+# Nothing to download — the Dockerfile stages everything under /staging/pkg.
+source=()
+sha256sums=()
+
+package() {
+    # Copy the pre-assembled tree. makepkg runs this function inside its own
+    # internal fakeroot, so every entry comes out owned by root:root in the
+    # resulting .pkg.tar.zst without the caller needing to be root.
+    cp -a /staging/pkg/. "$pkgdir/"
+}

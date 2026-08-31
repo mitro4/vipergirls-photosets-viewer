@@ -1,0 +1,13 @@
+#!/bin/bash
+# postrm / %postun — runs after the package files are removed.
+# Cleans up directories that rpm/dpkg leave behind (they only remove files,
+# not directories).
+rm -rf /opt/vipergirls-viewer 2>/dev/null || true
+
+# Optionally remove the system-wide data dir (systemd mode).
+# Per-user data ($XDG_DATA_HOME) is intentionally preserved.
+if [ -d /var/lib/vipergirls-viewer ] && [ -z "$(ls -A /var/lib/vipergirls-viewer 2>/dev/null)" ]; then
+    rmdir /var/lib/vipergirls-viewer 2>/dev/null || true
+fi
+
+exit 0

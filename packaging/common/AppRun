@@ -1,0 +1,31 @@
+#!/bin/bash
+# AppRun — AppImage entry point for vipergirls-viewer.
+#
+# Starts Electron (Chromium), which spawns the bundled Python backend
+# (uvicorn on localhost:8000) and renders the SPA in a native window.
+# Data lives in $XDG_DATA_HOME/vipergirls-viewer (per-user, portable).
+set -euo pipefail
+
+# Resolve the AppDir (AppRun may be symlinked).
+SELF="$0"
+if [ -L "$SELF" ]; then
+    SELF="$(readlink -f "$SELF")"
+fi
+APPDIR="$(cd "$(dirname "$SELF")" && pwd)"
+
+APP_ROOT="$APPDIR/opt/vipergirls-viewer"
+PYTHON_ROOT="$APP_ROOT/python"
+ELECTRON_DIR="$APP_ROOT/electron"
+
+# Per-user data dir.
+DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/vipergirls-viewer"
+mkdir -p "$DATA_DIR"
+
+export DATA_DIR
+export PYTHONHOME="$PYTHON_ROOT"
+export PYTHONPATH="$APP_ROOT/backend"
+export LD_LIBRARY_PATH="$PYTHON_ROOT/lib:${LD_LIBRARY_PATH:-}"
+export VIPERGIRLS_APP_ROOT="$APP_ROOT"
+
+cd "$ELECTRON_DIR"
+exec ./electron --no-sandbox "$@"

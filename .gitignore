@@ -1,0 +1,21 @@
+# Build artifacts
+node_modules/
+dist/
+dist-packages/
+*.tsbuildinfo
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Secrets / runtime data
+.env
+data/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+
+errors/

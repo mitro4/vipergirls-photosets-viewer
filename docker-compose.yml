@@ -1,0 +1,20 @@
+services:
+  app:
+    build: .
+    container_name: viper-viewer
+    ports:
+      - "8888:80"
+    volumes:
+      - ./data:/data
+    # Pass the whole .env into the container (credentials + seed vars like
+    # VIPER_CACHE_LIMIT_GB). `required: false` — the file is optional.
+    env_file:
+      - path: .env
+        required: false
+    # Explicit entries keep their defaults when .env is absent; per-variable
+    # entries here override env_file.
+    environment:
+      - VIPER_USERNAME=${VIPER_USERNAME:-}
+      - VIPER_PASSWORD_MD5=${VIPER_PASSWORD_MD5:-}
+      - VIPER_REQUEST_LIMIT=${VIPER_REQUEST_LIMIT:-2}
+    restart: unless-stopped

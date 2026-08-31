@@ -1,0 +1,24 @@
+# Listen on port 80 (container port, mapped by compose)
+:80 {
+	# API requests -> FastAPI / uvicorn
+	handle /api/* {
+		reverse_proxy 127.0.0.1:8000 {
+			flush_interval -1
+		}
+	}
+
+	# Image proxy requests (streamed, large)
+	handle /proxy/* {
+		reverse_proxy 127.0.0.1:8000 {
+			flush_interval -1
+		}
+	}
+
+	# Static frontend + SPA fallback
+	handle {
+		root * /srv/static
+		encode zstd gzip
+		try_files {path} /index.html
+		file_server
+	}
+}

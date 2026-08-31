@@ -1,0 +1,157 @@
+name: build-macos
+
+# macOS build + self-test. Runs on real GitHub-hosted macOS runners
+# (macos-14 = Apple Silicon arm64) — NOT Docker, because a Python+Electron
+# app must be built on macOS to produce correct Mach-O binaries, and macOS
+# cannot run in Docker/podman. Intel x64 (macos-13) was dropped: GitHub is
+# deprecating those runners and they no longer allocate in reasonable time.
+#
+# Two phases per arch:
+#   1. Smoke test (the gate): frontend builds, backend installs its deps and
+#      actually starts on macOS, /api/health returns 200 within 60s. This is
+#      the high-value check — it catches native-lib issues (curl_cffi, lxml,
+#      ssl, Pillow) that only surface on darwin. MUST pass.
+#   2. PyInstaller bundle (best-effort, continue-on-error): produces a
+#      standalone backend binary. Kept best-effort because curl_cffi/lxml
+#      hidden imports sometimes need tuning; the smoke test still gives signal
+#      even if bundling is imperfect. Artifact uploaded for inspection.
+#
+# A full distributable .dmg (Electron .app wrapping the PyInstaller'd backend
+# + signed/notarized) is a follow-up — this workflow is the foundation.
+
+# The repo is public — GitHub-hosted runners are free (no minute billing),
+# so the smoke test + bundle run automatically on pushes and PRs. It can also
+# be triggered manually from the Actions tab.
+on:
+  push:
+    branches: [master, develop]
+  pull_request:
+  workflow_dispatch:
+
+# Cancel a superseded run on the same ref.
+concurrency:
+  group: build-macos-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  macos:
+    name: macOS ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14
+            name: arm64 (Apple Silicon)
+            arch: arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build frontend (tsc -b && vite build)
+        run: |
+          cd frontend
+          npm ci
+          npm run build
+
+      - name: Install backend deps
+        run: |
+          cd backend
+          python -m pip install -U pip
+          pip install -r requirements.txt
+
+      # ---- Phase 1: smoke test (the gate) ----
+      - name: Smoke test — backend healthy on macOS
+        working-directory: backend
+        run: |
+          mkdir -p "$RUNNER_TEMP/vdata"
+          # --no-gui runs uvicorn only (no Electron). VIPER_HOST/PORT and
+          # DATA_DIR are read by app.launcher. With no credentials and no
+          # auth.json, startup is offline (auto_login -> restore_auth is a
+          # no-op), so /api/health is reachable without network.
+          DATA_DIR="$RUNNER_TEMP/vdata" \
+          VIPER_HOST=127.0.0.1 \
+          VIPER_PORT=8000 \
+            python -m app.launcher --no-gui > "$RUNNER_TEMP/backend.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/backend.pid"
+          ok=0
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8000/api/health >/dev/null 2>&1; then
+              echo "::notice::Health check OK after ${i}s"
+              ok=1
+              break
+            fi
+            sleep 1
+          done
+          kill "$(cat "$RUNNER_TEMP/backend.pid")" 2>/dev/null || true
+          if [ "$ok" != "1" ]; then
+            echo "::error::backend did not become healthy within 60s. Last logs:"
+            tail -n 80 "$RUNNER_TEMP/backend.log" || true
+            exit 1
+          fi
+
+      - name: Upload backend log (on smoke-test failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-log-${{ matrix.arch }}
+          path: ${{ runner.temp }}/backend.log
+          if-no-files-found: ignore
+
+      # ---- Phase 2: PyInstaller bundle (best-effort) ----
+      - name: Install PyInstaller
+        run: pip install pyinstaller
+
+      - name: Bundle backend (PyInstaller, best-effort)
+        working-directory: backend
+        continue-on-error: true
+        run: |
+          pyinstaller --noconfirm --onedir --name vipergirls-backend \
+            --collect-all curl_cffi \
+            --collect-all lxml \
+            --collect-submodules app \
+            --paths . \
+            app/launcher.py
+
+      - name: Sanity-launch the bundle
+        working-directory: backend
+        continue-on-error: true
+        run: |
+          BIN="dist/vipergirls-backend/vipergirls-backend"
+          [ -x "$BIN" ] || { echo "bundle not produced (expected on first runs)"; exit 0; }
+          mkdir -p "$RUNNER_TEMP/vdata2"
+          DATA_DIR="$RUNNER_TEMP/vdata2" \
+          VIPER_HOST=127.0.0.1 \
+          VIPER_PORT=8001 \
+            "./$BIN" --no-gui > "$RUNNER_TEMP/bundle.log" 2>&1 &
+          BP=$!
+          ok=0
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8001/api/health >/dev/null 2>&1; then
+              echo "::notice::Bundle health check OK after ${i}s"
+              ok=1
+              break
+            fi
+            sleep 1
+          done
+          kill "$BP" 2>/dev/null || true
+          [ "$ok" = "1" ] || { echo "Bundle did not respond. Last logs:"; tail -n 40 "$RUNNER_TEMP/bundle.log" || true; }
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-${{ matrix.arch }}
+          path: |
+            frontend/dist/
+            backend/dist/
+          if-no-files-found: ignore

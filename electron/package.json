@@ -1,0 +1,7 @@
+{
+  "name": "vipergirls-viewer",
+  "version": "0.1.6",
+  "description": "ViperGirls Photo Sets Viewer",
+  "main": "main.js",
+  "private": true
+}
